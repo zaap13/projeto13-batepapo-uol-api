@@ -9,31 +9,77 @@ app.use(express.json());
 const mongoClient = new MongoClient("mongodb://localhost:27017");
 let db;
 
-mongoClient
-  .connect()
-  .then(() => {
-    db = mongoClient.db("uolChat");
-  })
-  .catch((err) => console.log(err));
+try {
+  await mongoClient.connect();
+  db = mongoClient.db("uolChat");
+} catch (err) {
+  console.log(err);
+}
 
-app.post("/participants", (req, res) => {
-  //cadastro
+app.post("/participants", async (req, res) => {
+  const { name } = req.body;
+
+  try {
+    await db.collection("participants").insert({
+      name,
+      lastStatus: Date.now(),
+    });
+    res.sendStatus(201);
+  } catch (err) {
+    res.status(422).send(err);
+  }
 });
 
-app.get("/participants", (req, res) => {
-  //Retornar a lista de todos os participantes
+app.get("/participants", async (req, res) => {
+  try {
+    const participants = await db.collection("participants").find().toArray();
+    res.send(participants);
+  } catch (err) {
+    console.log(err);
+    res.sendStatus(500);
+  }
 });
 
-app.post("/messages", (req, res) => {
+app.post("/messages", async (req, res) => {
   //Nova MSG
+  const { to, text, type } = req.body;
+  const { user } = req.headers;
+  
+  try {
+    await db.collection("messages").insertOne({
+      from: user,
+      to,
+      text,
+      type,
+      time: Date.now(), //Atualizar para o formato HH:MM:SS
+    });
+    res.sendStatus(201);
+  } catch (err) {
+    res.sendStatus(422).send(err);
+  }
 });
 
-app.get("/messages", (req, res) => {
-  //Retorna MSGS(deve aceitar query string ?limit=50)
+app.get("/messages", async (req, res) => {
+
+  const { limit } = req.query;
+  const { user } = req.headers; // Utilizar para autenticação
+
+  try {
+    const messages = await db
+      .collection("messages")
+      .find()
+      .limit(Number(limit))
+      .toArray();
+    res.send(messages);
+  } catch (err) {
+    console.log(err);
+    res.sendStatus(500);
+  }
 });
 
-app.post("/status", (req, res) => {
+app.post("/status", async (req, res) => {
   //Atualizar o atributo lastStatus do participante informado para o timestamp atual
+  const { user } = req.headers;
 });
 
 app.listen(5000, () => {
