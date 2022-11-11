@@ -1,12 +1,14 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
+import dotenv from "dotenv";
 
+dotenv.config();
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-const mongoClient = new MongoClient("mongodb://localhost:27017");
+const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db;
 
 try {
@@ -20,7 +22,7 @@ app.post("/participants", async (req, res) => {
   const { name } = req.body;
 
   try {
-    await db.collection("participants").insert({
+    await db.collection("participants").insertOne({
       name,
       lastStatus: Date.now(),
     });
@@ -44,7 +46,7 @@ app.post("/messages", async (req, res) => {
   //Nova MSG
   const { to, text, type } = req.body;
   const { user } = req.headers;
-  
+
   try {
     await db.collection("messages").insertOne({
       from: user,
@@ -73,6 +75,33 @@ app.get("/messages", async (req, res) => {
   } catch (err) {
     console.log(err);
     res.sendStatus(500);
+  }
+});
+
+app.delete("/messages/:id", async (req, res) => {
+  const { id } = req.params;
+  const { user } = req.headers;
+
+  try {
+    const check = await db
+      .collection("messages")
+      .find({ _id: ObjectId(id) })
+      .toArray();
+
+    if (!check) {
+      return res.sendStatus(404);
+    } else if (user !== check[0].from) {
+      return res.sendStatus(401);
+    }
+
+    const message = await db
+      .collection("messages")
+      .deleteOne({ _id: ObjectId(id) });
+    console.log(message);
+    res.send("Deu bom aqui em baixo");
+  } catch (err) {
+    console.log(err);
+    return res.sendStatus(404);
   }
 });
 
