@@ -60,7 +60,6 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/messages", async (req, res) => {
-
   const { limit } = req.query;
   const { user } = req.headers; // Utilizar para autenticação
 
