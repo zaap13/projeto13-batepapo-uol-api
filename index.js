@@ -3,8 +3,10 @@ import cors from "cors";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import Joi from "joi";
+import dayjs from "dayjs";
 
 dotenv.config();
+dayjs().format();
 const app = express();
 
 app.use(cors());
@@ -42,7 +44,6 @@ app.post("/participants", async (req, res) => {
 
   try {
     const participant = await participantsCollection.find(req.body).toArray();
-    console.log(participant);
     if (participant[0]) {
       return res.sendStatus(409);
     }
@@ -56,7 +57,7 @@ app.post("/participants", async (req, res) => {
       to: "todos",
       text: "entra na sala...",
       type: "status",
-      time: Date.now(), //Atualizar para o formato HH:MM:SS com dayjs
+      time: dayjs(Date.now()).format("HH:mm:ss"),
     });
     res.sendStatus(201);
   } catch (err) {
@@ -75,10 +76,8 @@ app.get("/participants", async (req, res) => {
 });
 
 app.post("/messages", async (req, res) => {
-  //Nova MSG
   const { to, text, type } = req.body;
   const { user } = req.headers;
-
   const { error } = messageSchema.validate(req.body, { abortEarly: false });
 
   if (error) {
@@ -87,29 +86,44 @@ app.post("/messages", async (req, res) => {
   }
 
   try {
+    const participant = await participantsCollection
+      .find({ name: user })
+      .toArray();
+    if (!participant[0]) {
+      return res.sendStatus(422);
+    }
+
     await messagesCollection.insertOne({
       from: user,
       to,
       text,
       type,
-      time: Date.now(), //Atualizar para o formato HH:MM:SS
+      time: dayjs(Date.now()).format("HH:mm:ss"),
     });
     res.sendStatus(201);
   } catch (err) {
-    res.sendStatus(422).send(err);
+    res.status(500).send(err);
   }
 });
 
 app.get("/messages", async (req, res) => {
   const { limit } = req.query;
-  const { user } = req.headers; // Utilizar para autenticação
+  const { user } = req.headers;
 
   try {
     const messages = await messagesCollection
       .find()
       .limit(Number(limit))
       .toArray();
-    res.send(messages);
+
+    res.send(
+      messages.filter(
+        (message) =>
+          message.type !== "private_message" ||
+          message.to === user ||
+          message.from === user
+      )
+    );
   } catch (err) {
     console.log(err);
     res.sendStatus(500);
@@ -133,7 +147,7 @@ app.delete("/messages/:id", async (req, res) => {
 
     const message = await messagesCollection.deleteOne({ _id: ObjectId(id) });
     console.log(message);
-    res.send("Deu bom aqui em baixo");
+    res.sendStatus(204);
   } catch (err) {
     console.log(err);
     return res.sendStatus(404);
