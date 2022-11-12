@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
+import Joi from "joi";
 
 dotenv.config();
 const app = express();
@@ -9,22 +10,53 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const mongoClient = new MongoClient(process.env.MONGO_URI);
-let db;
 
 try {
   await mongoClient.connect();
-  db = mongoClient.db("uolChat");
 } catch (err) {
   console.log(err);
 }
 
+const db = mongoClient.db("uolChat");
+const participantsCollection = db.collection("participants");
+const messagesCollection = db.collection("messages");
+
+const userSchema = Joi.object({
+  name: Joi.string().required(),
+});
+
+const messageSchema = Joi.object({
+  to: Joi.string().required(),
+  text: Joi.string().required(),
+  type: Joi.any().valid("message", "private_message").required(),
+});
+
 app.post("/participants", async (req, res) => {
   const { name } = req.body;
+  const { error } = userSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    console.log(error);
+    return res.status(422).send(error.details.map((detail) => detail.message));
+  }
 
   try {
-    await db.collection("participants").insertOne({
+    const participant = await participantsCollection.find(req.body).toArray();
+    console.log(participant);
+    if (participant[0]) {
+      return res.sendStatus(409);
+    }
+
+    await participantsCollection.insertOne({
       name,
       lastStatus: Date.now(),
+    });
+    await messagesCollection.insertOne({
+      from: name,
+      to: "todos",
+      text: "entra na sala...",
+      type: "status",
+      time: Date.now(), //Atualizar para o formato HH:MM:SS com dayjs
     });
     res.sendStatus(201);
   } catch (err) {
@@ -34,7 +66,7 @@ app.post("/participants", async (req, res) => {
 
 app.get("/participants", async (req, res) => {
   try {
-    const participants = await db.collection("participants").find().toArray();
+    const participants = await participantsCollection.find().toArray();
     res.send(participants);
   } catch (err) {
     console.log(err);
@@ -47,8 +79,15 @@ app.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
   const { user } = req.headers;
 
+  const { error } = messageSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    console.log(error);
+    return res.status(422).send(error.details.map((detail) => detail.message));
+  }
+
   try {
-    await db.collection("messages").insertOne({
+    await messagesCollection.insertOne({
       from: user,
       to,
       text,
@@ -66,8 +105,7 @@ app.get("/messages", async (req, res) => {
   const { user } = req.headers; // Utilizar para autenticação
 
   try {
-    const messages = await db
-      .collection("messages")
+    const messages = await messagesCollection
       .find()
       .limit(Number(limit))
       .toArray();
@@ -83,20 +121,17 @@ app.delete("/messages/:id", async (req, res) => {
   const { user } = req.headers;
 
   try {
-    const check = await db
-      .collection("messages")
+    const check = await messagesCollection
       .find({ _id: ObjectId(id) })
       .toArray();
 
-    if (!check) {
+    if (!check[0]) {
       return res.sendStatus(404);
     } else if (user !== check[0].from) {
       return res.sendStatus(401);
     }
 
-    const message = await db
-      .collection("messages")
-      .deleteOne({ _id: ObjectId(id) });
+    const message = await messagesCollection.deleteOne({ _id: ObjectId(id) });
     console.log(message);
     res.send("Deu bom aqui em baixo");
   } catch (err) {
