@@ -157,7 +157,56 @@ app.delete("/messages/:id", async (req, res) => {
 app.post("/status", async (req, res) => {
   //Atualizar o atributo lastStatus do participante informado para o timestamp atual
   const { user } = req.headers;
+
+  try {
+    const participant = await participantsCollection
+      .find({ name: user })
+      .toArray();
+    if (!participant[0]) {
+      return res.sendStatus(404);
+    }
+
+    await participantsCollection.updateOne(
+      {
+        _id: participant._id,
+      },
+      { $set: { lastStatus: Date.now() } }
+    );
+
+    res.sendStatus(200);
+  } catch (err) {
+    res.status(500).send(err);
+  }
 });
+
+try {
+  setInterval(async () => {
+    const time = Date.now();
+
+    const participants = await participantsCollection
+      .find({ lastStatus: { $lt: time - 10000 } })
+      .toArray();
+
+    const deleteds = await participantsCollection.deleteMany({
+      lastStatus: { $lt: time - 10000 },
+    });
+
+    participants.forEach(
+      async (p) =>
+        await messagesCollection.insertOne({
+          from: p.name,
+          to: "todos",
+          text: "sai da sala...",
+          type: "status",
+          time: dayjs(Date.now()).format("HH:mm:ss"),
+        })
+    );
+
+    console.log(deleteds);
+  }, 15000);
+} catch (error) {
+  console.log(error);
+}
 
 app.listen(5000, () => {
   console.log("App running in port 5000");
